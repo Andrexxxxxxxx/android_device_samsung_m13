@@ -10,6 +10,8 @@ on:
         type: choice
         options:
           - twrp-12.1
+          - twrp-13.0
+          - twrp-14.1
           - twrp-11
       DEVICE_TREE_BRANCH:
         description: 'Device Tree Branch'
