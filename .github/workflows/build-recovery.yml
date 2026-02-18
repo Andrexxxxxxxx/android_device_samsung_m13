@@ -28,107 +28,83 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Используем контейнер, чтобы были все старые библиотеки
     container:
       image: ubuntu:20.04
     permissions:
       contents: write
 
-
     steps:
+      - name: Prepare Environment
+        run: |
+          apt-get update
+          apt-get install -y sudo git aria2 # Устанавливаем базу
+
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
-          android: false
+          android: true # Для Android нужно максимум места
           dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false # В контейнере не сработает
 
-      - name: Setup Build Environment
+      - name: Install Build Dependencies
         run: |
-         apt-get update
-         apt-get install -y \
-              bc bison build-essential ccache curl flex g++-multilib \
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib \
             gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
             lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
             pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 repo libncurses6
 
-      - name: Setup swap
-        run: |
-          fallocate -l 10G /swapfile
-          chmod 600 /swapfile
-          mkswap /swapfile
-          swapon /swapfile
-
-      - name: Prepare Container
-        run: |
-          apt-get update
-          apt-get install -y sudo # В голом контейнере часто нет sudo
-
       - name: Checkout Device Tree
         uses: actions/checkout@v4
         with:
           path: device/samsung/m13
 
-      - name: Initialize TWRP Manifest
+      - name: Initialize and Sync TWRP
         run: |
-          mkdir -p twrp && cd twrp
+          mkdir twrp && cd twrp
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b ${{ inputs.MANIFEST_BRANCH }}
-
-      - name: Sync TWRP Sources
-        run: |
-          cd twrp
-          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
-      - name: Setup Device Tree
-        run: |
-          mkdir -p twrp/device/samsung
-          cp -r device/samsung/m13 twrp/device/samsung/
+          # Синхронизация с оптимизацией, чтобы не зависло
+          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
       - name: Build Recovery
         run: |
+          # Переносим дерево внутрь исходников
+          mkdir -p twrp/device/samsung/m13
+          cp -r device/samsung/m13/* twrp/device/samsung/m13/
+          
           cd twrp
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
-          lunch twrp_m13-eng
-          make clean
+          # Убедись, что название комбо (twrp_m13-eng) совпадает с твоим vendorsetup.sh
+          lunch twrp_m13-eng || lunch omni_m13-eng 
           make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
 
-      - name: Upload Recovery Image
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TWRP-${{ github.run_id }}
+          name: TWRP-Result
           path: |
-            twrp/out/target/product/m13/recovery.img
-            twrp/out/target/product/m13/boot.img
-          if-no-files-found: warn
+            twrp/out/target/product/*/recovery.img
+            twrp/out/target/product/*/boot.img
 
       - name: Create Release
         if: success()
         uses: softprops/action-gh-release@v1
         with:
           tag_name: twrp-m13-${{ github.run_number }}
-          name: TWRP for Samsung Galaxy M13 - Build ${{ github.run_number }}
-          body: |
-            ## TWRP Recovery for Samsung Galaxy M13 (SM-M135F)
-            
-            **Build Info:**
-            - Manifest: ${{ inputs.MANIFEST_BRANCH }}
-            - Build Target: ${{ inputs.BUILD_TARGET }}
-            - Date: ${{ github.event.head_commit.timestamp }}
-            
-            **Installation:**
-            1. Boot to Download Mode (Power + Vol Down)
-            2. Flash via Odin (AP slot) or Heimdall
-            
-            ⚠️ **Warning:** Flashing custom recovery will trip Knox!
+          name: TWRP for Samsung Galaxy M13
           files: |
-            twrp/out/target/product/m13/recovery.img
+            twrp/out/target/product/*/recovery.img
+            twrp/out/target/product/*/boot.img
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
