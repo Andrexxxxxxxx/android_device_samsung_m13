@@ -71,7 +71,6 @@ jobs:
             python3 python-is-python3 repo libncurses6
 
 
-
       - name: Checkout Device Tree
         uses: actions/checkout@v4
         with:
