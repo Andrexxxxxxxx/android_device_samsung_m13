@@ -54,6 +54,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
+          export DEBIAN_FRONTEND=noninteractive
           # Добавляем ключ -y (yes) ко всем командам
           apt-get install -y tzdata # Установит часовой пояс по умолчанию (UTC)
           sudo apt-get install -y \
