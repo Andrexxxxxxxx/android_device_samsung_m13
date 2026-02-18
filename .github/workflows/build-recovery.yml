@@ -25,12 +25,14 @@ on:
         options:
           - recovery
           - boot
-
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
     permissions:
       contents: write
+
 
     steps:
       - name: Free Disk Space
@@ -61,6 +63,11 @@ jobs:
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
+
+      - name: Prepare Container
+        run: |
+          apt-get update
+          apt-get install -y sudo # В голом контейнере часто нет sudo
 
       - name: Checkout Device Tree
         uses: actions/checkout@v4
