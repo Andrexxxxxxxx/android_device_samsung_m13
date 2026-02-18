@@ -52,23 +52,28 @@ jobs:
           swap-storage: false # В контейнере не сработает
 
       
-      - name: Install Build Dependencies
+      - name: Force Non-Interactive Install
         run: |
-          # 1. Жесткая предустановка часового пояса (обманываем систему)
-          ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo "UTC" > /etc/timezone
+          # 1. Принудительно настраиваем часовой пояс в конфиге debconf
+          echo "tzdata tzdata/Areas select Etc" | debconf-set-selections
+          echo "tzdata tzdata/Zones/Etc select UTC" | debconf-set-selections
           
-          # 2. Обновляем списки и ставим базу БЕЗ вопросов
+          # 2. Подменяем фронтенд на неинтерактивный на уровне системы
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # 3. Устанавливаем базу, игнорируя любые ошибки конфигурации
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
+          apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" tzdata
           
-          # 3. Основная установка со всеми флагами подавления диалогов
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          # 4. Устанавливаем всё остальное
+          apt-get install -y --no-install-recommends \
             bc bison build-essential ccache curl flex g++-multilib \
             gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
             lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
             pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 repo libncurses6
+
 
 
       - name: Checkout Device Tree
