@@ -22,31 +22,59 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # БОЛЬШЕ памяти!
-    timeout-minutes: 180  # Увеличьте!
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    
     steps:
-    - name: Checkout
+    - name: Checkout Device Tree
       uses: actions/checkout@v4
       with:
         path: device/samsung/m13
-        
-    - name: Free disk space
+    
+    - name: Free Disk Space
       uses: jlumbroso/free-disk-space@main
       with:
+        android: true
         tool-cache: false
-        
-    - name: Build TWRP
-      uses: docker://mrkev/twrp-builder:latest  # Готовый образ
-      with:
-        device: samsung/m13
-        branch: ${{ inputs.MANIFEST_BRANCH }}
-        recovery: ${{ inputs.BUILD_TARGET == 'recovery' }}
-        threads: 2  # Важно для памяти
-        
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: twrp-img
-        path: |
-          out/target/product/*/recovery.img
-          out/target/product/*/boot.img
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
+          lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
+          pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+          python3 python-is-python3 repo libncurses6
+    
+    - name: Add Swap (4GB)
+      run: |
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
+    
+    - name: Initialize TWRP Sources
+      run: |
+        mkdir -p twrp
+        cd twrp
+        git config --global user.email "actions@github.com"
+        git config --global user.name "GitHub Actions"
+        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b ${{ inputs.MANIFEST_BRANCH }}
+        # Синхронизируем БЕЗ проблемных флагов
+        repo sync -c --no-tags -j$(nproc --all)
+    
+    - name: Copy Device Tree
+      run: |
+        cp -r device/samsung/m13 twrp/device/samsung/
+    
+    - name: Build
+      run: |
+        cd twrp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export USE_CCACHE=1
+        source build/envsetup.sh
+        lunch twrp_m13-eng
+        make recoveryimage -j2  # Ограничьте ядра!
