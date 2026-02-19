@@ -1,5 +1,4 @@
 name: Build TWRP Recovery
-
 on:
   workflow_dispatch:
     inputs:
@@ -12,113 +11,42 @@ on:
           - twrp-12.1
           - twrp-13.0
           - twrp-14.1
-          - twrp-11
-      DEVICE_TREE_BRANCH:
-        description: 'Device Tree Branch'
-        required: true
-        default: 'main'
       BUILD_TARGET:
-        description: 'Build Target (recovery/boot)'
+        description: 'Build Target'
         required: true
         default: 'recovery'
         type: choice
         options:
           - recovery
           - boot
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    # Используем контейнер, чтобы были все старые библиотеки
-    container:
-      image: ubuntu:20.04
-    permissions:
-      contents: write
-
+    runs-on: ubuntu-22.04  # БОЛЬШЕ памяти!
+    timeout-minutes: 180  # Увеличьте!
     steps:
-      - name: Prepare Environment
-        run: |
-          apt-get update
-          apt-get install -y sudo git aria2 # Устанавливаем базу
-
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true # Для Android нужно максимум места
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false # В контейнере не сработает
-
-      
-      - name: Force Non-Interactive Install
-        run: |
-          # 1. Принудительно настраиваем часовой пояс в конфиге debconf
-          echo "tzdata tzdata/Areas select Etc" | debconf-set-selections
-          echo "tzdata tzdata/Zones/Etc select UTC" | debconf-set-selections
-          
-          # 2. Подменяем фронтенд на неинтерактивный на уровне системы
-          export DEBIAN_FRONTEND=noninteractive
-          
-          # 3. Устанавливаем базу, игнорируя любые ошибки конфигурации
-          apt-get update
-          apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" tzdata
-          
-          # 4. Устанавливаем всё остальное
-          apt-get install -y --no-install-recommends \
-            bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
-            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
-            libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
-            pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-            python3 python-is-python3 repo libncurses6
-
-
-
-      - name: Checkout Device Tree
-        uses: actions/checkout@v4
-        with:
-          path: device/samsung/m13
-
-      - name: Initialize and Sync TWRP
-        run: |
-          mkdir twrp && cd twrp
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b ${{ inputs.MANIFEST_BRANCH }}
-          # Синхронизация с оптимизацией, чтобы не зависло
-          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
-
-      - name: Build Recovery
-        run: |
-          # Переносим дерево внутрь исходников
-          mkdir -p twrp/device/samsung/m13
-          cp -r device/samsung/m13/* twrp/device/samsung/m13/
-          
-          cd twrp
-          export ALLOW_MISSING_DEPENDENCIES=true
-          source build/envsetup.sh
-          # Убедись, что название комбо (twrp_m13-eng) совпадает с твоим vendorsetup.sh
-          lunch twrp_m13-eng || lunch omni_m13-eng 
-          make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: TWRP-Result
-          path: |
-            twrp/out/target/product/*/recovery.img
-            twrp/out/target/product/*/boot.img
-
-      - name: Create Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: twrp-m13-${{ github.run_number }}
-          name: TWRP for Samsung Galaxy M13
-          files: |
-            twrp/out/target/product/*/recovery.img
-            twrp/out/target/product/*/boot.img
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: device/samsung/m13
+        
+    - name: Free disk space
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: false
+        
+    - name: Build TWRP
+      uses: docker://mrkev/twrp-builder:latest  # Готовый образ
+      with:
+        device: samsung/m13
+        branch: ${{ inputs.MANIFEST_BRANCH }}
+        recovery: ${{ inputs.BUILD_TARGET == 'recovery' }}
+        threads: 2  # Важно для памяти
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: twrp-img
+        path: |
+          out/target/product/*/recovery.img
+          out/target/product/*/boot.img
