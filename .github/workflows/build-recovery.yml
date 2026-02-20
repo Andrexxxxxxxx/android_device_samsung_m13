@@ -56,15 +56,29 @@ jobs:
         sudo swapon /swapfile
         free -h
     
-    - name: Initialize TWRP Sources
+    - name: Initialize TWRP Directory
       run: |
         mkdir -p twrp
+      timeout-minutes: 5
+    
+    - name: Configure Git
+      run: |
         cd twrp
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
+      timeout-minutes: 5
+    
+    - name: Repo Init
+      run: |
+        cd twrp
         repo init --depth=1 --no-clone-bundle --repo-rev=stable -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b ${{ inputs.MANIFEST_BRANCH }}
-        # Синхронизируем БЕЗ проблемных флагов
+      timeout-minutes: 30
+    
+    - name: Repo Sync
+      run: |
+        cd twrp
         repo sync -c --no-tags -j$(nproc --all)
+      timeout-minutes: 480
     
     - name: Copy Device Tree
       run: |
