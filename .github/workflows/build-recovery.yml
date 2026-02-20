@@ -69,6 +69,7 @@ jobs:
     - name: Copy Device Tree
       run: |
         cp -r device/samsung/m13 twrp/device/samsung/
+        cp AndroidProducts.mk twrp/
     
     - name: Build
       run: |
