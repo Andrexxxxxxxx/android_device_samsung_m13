@@ -5,6 +5,4 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-add_lunch_combo twrp_m13-user
-add_lunch_combo twrp_m13-userdebug
-add_lunch_combo twrp_m13-eng
+# Lunch combos are defined in AndroidProducts.mk via COMMON_LUNCH_CHOICES
