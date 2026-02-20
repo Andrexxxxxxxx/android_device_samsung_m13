@@ -8,7 +8,7 @@
 LOCAL_PATH := $(call my-dir)
 
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/twrp_m13.mk
+    $(LOCAL_PATH)/twrp_m13.mk
 
 COMMON_LUNCH_CHOICES := \
     twrp_m13-user \
