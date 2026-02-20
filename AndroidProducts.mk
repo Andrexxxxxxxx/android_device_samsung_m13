@@ -11,6 +11,6 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_PATH)/device/samsung/m13/twrp_m13.mk
 
 COMMON_LUNCH_CHOICES := \
-    twrp_m13-user \
-    twrp_m13-userdebug \
-    twrp_m13-eng
+    twrp_m13-14-user \
+    twrp_m13-14-userdebug \
+    twrp_m13-14-eng
