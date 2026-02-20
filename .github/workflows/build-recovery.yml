@@ -76,5 +76,5 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         export USE_CCACHE=1
         source build/envsetup.sh
-        lunch twrp_m13-14-eng
+        lunch twrp_m13-ap2a-eng
         make recoveryimage -j2  # Ограничьте ядра!
