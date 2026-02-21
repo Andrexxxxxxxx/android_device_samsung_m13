@@ -1,12 +1,3 @@
-- name: Sync Repo
-  run: |
-    export REPO_ALLOW_ANY_PYTHON=1 # На всякий случай для совместимости
-    repo init -u ... --no-clone-bundle
-    repo sync -c -j$(nproc) --no-tags --no-clone-bundle
-  env:
-    REPO_AUTOUPDATE: "0"
-
-
 name: Build TWRP Recovery
 on:
   workflow_dispatch:
