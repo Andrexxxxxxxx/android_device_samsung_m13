@@ -1,0 +1,219 @@
+name: Build TWRP Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'TWRP Branch'
+        required: true
+        default: 'twrp-12.1'
+        type: choice
+        options:
+          - twrp-12.1
+          - twrp-13.0
+          - twrp-14.1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    
+    steps:
+    - name: Checkout Device Tree
+      uses: actions/checkout@v4
+      
+    - name: Free Disk Space
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: false
+        android: true
+        large-packages: true
+        
+    - name: Add 4GB Swap
+      run: |
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+        free -h
+        
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
+          lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
+          pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+          python3 python-is-python3
+        
+    - name: Install repo tool
+      run: |
+        mkdir -p $HOME/bin
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > $HOME/bin/repo
+        chmod a+x $HOME/bin/repo
+        
+        # Add to PATH for current step AND future steps
+        echo "$HOME/bin" >> $GITHUB_PATH
+        export PATH="$HOME/bin:$PATH"
+        
+        # Verify installation
+        ls -la $HOME/bin/repo
+        $HOME/bin/repo --version
+        
+    - name: Configure Git (CRITICAL)
+      run: |
+        # Remove any stored credentials that might interfere
+        rm -f ~/.git-credentials
+        rm -f ~/.netrc
+        
+        # Disable credential helper completely
+        git config --global --unset credential.helper || true
+        git config --global credential.helper ""
+        
+        # Force HTTPS instead of git://
+        git config --global url."https://".insteadOf git://
+        
+        # Set dummy user info
+        git config --global user.email "actions@github.com"
+        git config --global user.name "GitHub Actions"
+        
+        # Verify config
+        git config --list
+        
+    - name: Test GitHub Access
+      run: |
+        # Test that we can access GitHub without auth
+        curl -I https://github.com/twrp/manifest.git 2>&1 | head -5
+        
+        # Test git ls-remote (this is what repo does internally)
+        git ls-remote https://github.com/twrp/manifest.git HEAD 2>&1 || echo "Test failed but continuing..."
+        
+    - name: Initialize TWRP Sources
+      run: |
+        mkdir -p twrp-src
+        cd twrp-src
+        
+        # Disable all auth prompts and launcher updates
+        export REPO_NO_LAUNCHER_UPDATE=1
+        export GIT_TERMINAL_PROMPT=0
+        export GIT_ASKPASS=/bin/true
+        export GIT_CREDENTIAL_HELPER=""
+        
+        # Use absolute path to repo
+        $HOME/bin/repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1 --no-tags
+        
+        # Sync with limited threads
+        $HOME/bin/repo sync -c --no-tags -j2 --force-sync
+        
+    - name: Debug Device Tree Structure
+      run: |
+        cd $GITHUB_WORKSPACE
+        
+        echo "=== Current directory: $(pwd) ==="
+        echo "=== All files in root: ==="
+        ls -la
+        echo "=== Searching for AndroidProducts.mk: ==="
+        find . -name "AndroidProducts.mk" -type f 2>/dev/null
+        echo "=== Searching for device trees: ==="
+        find . -type d -name "samsung" 2>/dev/null
+        echo "=== All .mk files: ==="
+        find . -name "*.mk" -type f 2>/dev/null | head -20
+        
+    - name: Copy Device Tree
+      run: |
+        cd $GITHUB_WORKSPACE
+        
+        # Determine source path
+        SOURCE_PATH=""
+        if [ -f "AndroidProducts.mk" ]; then
+          SOURCE_PATH="."
+          echo "Using root as source"
+        elif [ -f "device/samsung/m13/AndroidProducts.mk" ]; then
+          SOURCE_PATH="device/samsung/m13"
+          echo "Using device/samsung/m13 as source"
+        elif [ -f "android_device_samsung_m13/AndroidProducts.mk" ]; then
+          SOURCE_PATH="android_device_samsung_m13"
+          echo "Using android_device_samsung_m13 as source"
+        else
+          # Try to find any AndroidProducts.mk
+          FOUND_FILE=$(find . -name "AndroidProducts.mk" -type f | head -1)
+          if [ -n "$FOUND_FILE" ]; then
+            SOURCE_PATH=$(dirname "$FOUND_FILE")
+            echo "Found at: $SOURCE_PATH"
+          else
+            echo "ERROR: AndroidProducts.mk not found anywhere!"
+            echo "Directory structure:"
+            find . -maxdepth 3 -type d | head -30
+            exit 1
+          fi
+        fi
+        
+        # Copy to destination
+        DEST_DIR="twrp-src/device/samsung/m13"
+        mkdir -p "$DEST_DIR"
+        
+        echo "Copying from $SOURCE_PATH to $DEST_DIR"
+        cp -r "$SOURCE_PATH"/* "$DEST_DIR/" 2>/dev/null || true
+        
+        # Verify
+        if [ -f "$DEST_DIR/AndroidProducts.mk" ]; then
+          echo "✅ Successfully copied AndroidProducts.mk"
+          echo "Contents of destination:"
+          ls -la "$DEST_DIR"
+        else
+          echo "❌ AndroidProducts.mk not found in destination"
+          echo "Contents of $DEST_DIR:"
+          ls -la "$DEST_DIR" 2>/dev/null || echo "Directory doesn't exist"
+          echo "Source path contents:"
+          ls -la "$SOURCE_PATH"
+          exit 1
+        fi
+        
+    - name: Build TWRP
+      run: |
+        cd twrp-src
+        
+        # Check if device tree is properly placed
+        if [ ! -f "device/samsung/m13/AndroidProducts.mk" ]; then
+          echo "ERROR: Device tree not in correct location!"
+          echo "Expected: device/samsung/m13/AndroidProducts.mk"
+          echo "Found at:"
+          find . -name "AndroidProducts.mk" -type f 2>/dev/null
+          exit 1
+        fi
+        
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export USE_CCACHE=1
+        source build/envsetup.sh
+        
+        # Try multiple lunch combinations
+        LUNCH_CMD=""
+        for combo in twrp_m13-eng omni_m13-eng aosp_m13-eng twrp_m13-userdebug; do
+          if echo "$combo" | grep -q "$(get_build_var TARGET_PRODUCT 2>/dev/null || echo '')"; then
+            LUNCH_CMD="$combo"
+            break
+          fi
+        done
+        
+        if [ -z "$LUNCH_CMD" ]; then
+          # Try direct lunch
+          lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
+        else
+          lunch "$LUNCH_CMD"
+        fi
+        
+        echo "Building recovery image..."
+        make recoveryimage -j2
+        
+    - name: Upload Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: twrp-${{ inputs.MANIFEST_BRANCH }}-${{ github.run_number }}
+        path: |
+          twrp-src/out/target/product/*/recovery.img
+          twrp-src/out/target/product/*/boot.img
+        retention-days: 14
