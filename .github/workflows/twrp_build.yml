@@ -1,0 +1,58 @@
+name: Build TWRP for Samsung M13
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'TWRP Branch'
+        required: true
+        default: 'twrp-12.1'
+        type: choice
+        options:
+          - twrp-12.1
+          - twrp-13.0
+          - twrp-14.1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    
+    steps:
+    - name: Checkout Device Tree
+      uses: actions/checkout@v4
+      # Не указан path -> клонируется в корень runner
+    
+    - name: Free Disk Space
+      uses: jlumbroso/free-disk-space@main
+      with:
+        android: true
+        tool-cache: false
+        
+    - name: Add 4GB Swap ( kritически важно !
+      run: |
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+        free -h
+        
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
+          lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
+          pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+          python3 python-is-python3 repo
+        
+    - name: Initialize TWRP Sources
+      run: |
+        mkdir -p twrp-src
+        cd twrp-src
+        git config --global user.email "actions@github.com"
+        git config --global user.name "GitHub Actions"
+        repo init --depth=1 -u https://github.com
