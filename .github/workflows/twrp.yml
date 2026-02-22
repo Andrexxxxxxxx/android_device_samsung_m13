@@ -146,3 +146,42 @@ jobs:
         path: |
           twrp-src/out/target/product/*/recovery.img
           twrp-src/out/target/product/*/boot.img
+
+name: Commit changes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    env:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Отключаем автоматическое сохранение GITHUB_TOKEN,
+          # чтобы мы могли подменить его своим PAT.
+          persist-credentials: false
+
+      - name: Configure git user
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Set remote with PAT
+        run: |
+          # Преобразуем https://github.com/owner/repo.git → https://<TOKEN>@github.com/owner/repo.git
+          git remote set-url origin https://$PAT_TOKEN@github.com/${{ github.repository }}.git
+
+      - name: Make changes (пример)
+        run: |
+          echo "new line $(date)" >> file.txt
+          git add file.txt
+          git commit -m "Add timestamp"
+
+      - name: Push changes
+        run: |
+          git push origin HEAD:${{ github.ref_name }}
