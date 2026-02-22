@@ -48,39 +48,19 @@ jobs:
           pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
           python3 python-is-python3
         
-    - name: Install Official repo Tool
+    - name: Install repo tool
       run: |
-        # УДАЛЯЕМ pip-версию если была
-        python3 -m pip uninstall -y repo || true
-        
-        # Скачиваем ОФИЦИАЛЬНЫЙ repo скрипт от Google
+        # Официальный repo от Google
         sudo curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
         sudo chmod a+x /usr/local/bin/repo
-        
-        # Проверяем установку
         /usr/local/bin/repo --version
-        head -3 /usr/local/bin/repo
         
-    - name: Configure Git for Public Access
+    - name: Configure Git
       run: |
-        # Полная очистка credentials
-        git config --global --unset credential.helper || true
         git config --global credential.helper ""
-        rm -f ~/.git-credentials ~/.netrc
-        
-        # Force HTTPS
         git config --global url."https://".insteadOf git://
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
-        
-    - name: Test GitHub Access
-      run: |
-        # Проверяем доступ к манифесту
-        echo "Testing GitHub access..."
-        curl -I https://github.com/twrp/manifest.git 2>&1 | head -3
-        
-        # Проверяем repo команды
-        /usr/local/bin/repo --help | head -10
         
     - name: Initialize TWRP Sources
       run: |
@@ -90,3 +70,65 @@ jobs:
         export REPO_NO_LAUNCHER_UPDATE=1
         export GIT_TERMINAL_PROMPT=0
         export GIT_ASKPASS=/bin/true
+        
+        /usr/local/bin/repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1
+        
+        /usr/local/bin/repo sync -c --no-tags -j2 --force-sync
+        
+    - name: Copy Device Tree
+      run: |
+        cd $GITHUB_WORKSPACE
+        
+        # Find AndroidProducts.mk
+        FOUND_FILE=$(find . -name "AndroidProducts.mk" -type f | head -1)
+        if [ -z "$FOUND_FILE" ]; then
+          echo "ERROR: AndroidProducts.mk not found!"
+          echo "Searching for .mk files:"
+          find . -name "*.mk" -type f | head -20
+          exit 1
+        fi
+        
+        SRC_DIR=$(dirname "$FOUND_FILE")
+        echo "Found AndroidProducts.mk in: $SRC_DIR"
+        
+        DEST_DIR="twrp-src/device/samsung/m13"
+        mkdir -p "$DEST_DIR"
+        
+        echo "Copying from $SRC_DIR to $DEST_DIR"
+        cp -r "$SRC_DIR"/* "$DEST_DIR/"
+        
+        if [ -f "$DEST_DIR/AndroidProducts.mk" ]; then
+          echo "✅ Device tree copied"
+        else
+          echo "❌ Copy failed"
+          ls -la "$DEST_DIR"
+          exit 1
+        fi
+        
+    - name: Build TWRP
+      run: |
+        cd twrp-src
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export USE_CCACHE=1
+        source build/envsetup.sh
+        
+        lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
+        
+        make recoveryimage -j2
+        
+        # Отладка: покажем, что получилось
+        echo "=== Build output directories ==="
+        ls -la out/target/product/
+        echo "=== All img files ==="
+        find out/target/product -name "*.img" -type f
+        
+    - name: Upload Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: twrp-${{ inputs.MANIFEST_BRANCH }}-${{ github.run_number }}
+        path: |
+          twrp-src/out/target/product/*/recovery.img
+          twrp-src/out/target/product/*/boot.img
+          twrp-src/out/target/product/*/twrp*.img
+        retention-days: 14
