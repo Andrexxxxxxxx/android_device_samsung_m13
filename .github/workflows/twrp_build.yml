@@ -48,15 +48,11 @@ jobs:
           pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
           python3 python-is-python3
         
-    - name: Install repo tool (properly)
+    - name: Install repo tool
       run: |
-        # Скачиваем repo напрямую в ~/bin
-        mkdir -p ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        # Добавляем в PATH для всего workflow
-        echo "$HOME/bin" >> $GITHUB_PATH
-        # Проверяем установку
+        curl -L https://storage.googleapis.com/git-repo-downloads/repo | sudo tee /usr/local/bin/repo > /dev/null
+        sudo chmod a+x /usr/local/bin/repo
+        which repo
         repo --version
         
     - name: Initialize TWRP Sources
@@ -65,19 +61,12 @@ jobs:
         cd twrp-src
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
-        
-        # КЛЮЧЕВОЕ: отключаем обновление repo через launcher
         export REPO_NO_LAUNCHER_UPDATE=1
-        
-        # Инициализируем repo
         repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1
-        
-        # Синхронизируем
         repo sync -c --no-tags -j$(nproc --all)
         
     - name: Copy Device Tree
       run: |
-        # Проверяем структуру device tree
         if [ -f "AndroidProducts.mk" ]; then
           echo "✅ AndroidProducts.mk found in root"
         else
@@ -85,39 +74,6 @@ jobs:
           find . -name "AndroidProducts.mk" -type f
         fi
         
-        # Копируем device tree
         mkdir -p twrp-src/device/samsung/m13
         cp -r ./* twrp-src/device/samsung/m13/ 2>/dev/null || true
         
-        # Проверяем копирование
-        if [ -f "twrp-src/device/samsung/m13/AndroidProducts.mk" ]; then
-          echo "✅ Device tree copied successfully"
-        else
-          echo "❌ AndroidProducts.mk not found after copy"
-          ls -la twrp-src/device/samsung/m13/
-          exit 1
-        fi
-        
-    - name: Build TWRP
-      run: |
-        cd twrp-src
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export USE_CCACHE=1
-        source build/envsetup.sh
-        
-        # Пробуем разные варианты lunch
-        lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng
-        
-        # Собираем с ограничением потоков (из-за памяти)
-        make recoveryimage -j2
-        
-    - name: Upload Artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: twrp-${{ inputs.MANIFEST_BRANCH }}-${{ github.run_number }}
-        path: |
-          twrp-src/out/target/product/*/recovery.img
-          twrp-src/out/target/product/*/boot.img
-          twrp-src/out/target/product/*/twrp*.img
-        retention-days: 14
