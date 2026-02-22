@@ -21,7 +21,9 @@ jobs:
     steps:
     - name: Checkout Device Tree
       uses: actions/checkout@v4
-      
+      with:
+        token: ''  # КРИТИЧЕСКИ ВАЖНО - отключаем токен
+        
     - name: Free Disk Space
       uses: jlumbroso/free-disk-space@main
       with:
@@ -48,79 +50,121 @@ jobs:
           pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
           python3 python-is-python3
         
-    - name: Install repo tool
+    - name: Install repo
       run: |
-        # Официальный repo от Google
+        # Качаем ОФИЦИАЛЬНЫЙ repo от Google
         sudo curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
         sudo chmod a+x /usr/local/bin/repo
         /usr/local/bin/repo --version
         
-    - name: Configure Git
+    - name: Reset Git Auth (CRITICAL FIX)
       run: |
+        # УБИВАЕМ ВСЕ credentials
+        git config --global --unset credential.helper || true
         git config --global credential.helper ""
+        rm -f ~/.git-credentials ~/.netrc
+        
+        # УБИРАЕМ токен из конфига (если Actions его добавил)
+        git config --global --unset-all http.https://github.com/.extraheader || true
+        
+        # Force HTTPS
         git config --global url."https://".insteadOf git://
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
+        
+        # ДОБАВЛЯЕМ переменные окружения В КОНФИГ ГИТА (сохранятся)
+        git config --global core.askPass ""
+        git config --global core.sshCommand ""
         
     - name: Initialize TWRP Sources
       run: |
         mkdir -p twrp-src
         cd twrp-src
         
+        # ПЕРЕОПРЕДЕЛЯЕМ переменные для ТЕКУЩЕЙ сессии
         export REPO_NO_LAUNCHER_UPDATE=1
         export GIT_TERMINAL_PROMPT=0
-        export GIT_ASKPASS=/bin/true
+        export GIT_ASKPASS=/bin/false
+        export GIT_CREDENTIAL_HELPER=""
+        export HTTPS_PROXY=""
+        export HTTP_PROXY=""
         
-        /usr/local/bin/repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1
+        # ИСПОЛЬЗУЕМ ОТНОСИТЕЛЬНЫЙ путь (repo в PATH)
+        repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1
         
-        /usr/local/bin/repo sync -c --no-tags -j2 --force-sync
+        repo sync -c --no-tags -j2 --force-sync
+        
+    - name: Debug Build Structure
+      run: |
+        cd twrp-src
+        echo "=== Device tree structure ==="
+        find device -name "AndroidProducts.mk" -type f 2>/dev/null || echo "Not found!"
+        echo "=== Build targets ==="
+        ls out/target/product/ 2>/dev/null || echo "No out dir yet"
         
     - name: Copy Device Tree
       run: |
         cd $GITHUB_WORKSPACE
         
-        # Find AndroidProducts.mk
-        FOUND_FILE=$(find . -name "AndroidProducts.mk" -type f | head -1)
-        if [ -z "$FOUND_FILE" ]; then
-          echo "ERROR: AndroidProducts.mk not found!"
-          echo "Searching for .mk files:"
-          find . -name "*.mk" -type f | head -20
-          exit 1
+        # Ищем AndroidProducts.mk
+        if [ -f "AndroidProducts.mk" ]; then
+          SRC="."
+        elif [ -f "device/samsung/m13/AndroidProducts.mk" ]; then
+          SRC="device/samsung/m13"
+        else
+          FOUND=$(find . -name "AndroidProducts.mk" -type f | head -1)
+          if [ -n "$FOUND" ]; then
+            SRC=$(dirname "$FOUND")
+          else
+            echo "ERROR: AndroidProducts.mk not found!"
+            find . -maxdepth 3 -type d
+            exit 1
+          fi
         fi
         
-        SRC_DIR=$(dirname "$FOUND_FILE")
-        echo "Found AndroidProducts.mk in: $SRC_DIR"
+        echo "Copying from: $SRC"
+        mkdir -p twrp-src/device/samsung/m13
+        cp -r "$SRC"/* twrp-src/device/samsung/m13/ 2>/dev/null || true
         
-        DEST_DIR="twrp-src/device/samsung/m13"
-        mkdir -p "$DEST_DIR"
-        
-        echo "Copying from $SRC_DIR to $DEST_DIR"
-        cp -r "$SRC_DIR"/* "$DEST_DIR/"
-        
-        if [ -f "$DEST_DIR/AndroidProducts.mk" ]; then
+        # Проверяем
+        if [ -f "twrp-src/device/samsung/m13/AndroidProducts.mk" ]; then
           echo "✅ Device tree copied"
         else
           echo "❌ Copy failed"
-          ls -la "$DEST_DIR"
+          ls -la twrp-src/device/samsung/m13/ || echo "Dir empty"
           exit 1
         fi
         
     - name: Build TWRP
       run: |
         cd twrp-src
+        
+        # Проверяем, что device tree на месте
+        if [ ! -f "device/samsung/m13/AndroidProducts.mk" ]; then
+          echo "ERROR: AndroidProducts.mk missing in device tree!"
+          find . -name "AndroidProducts.mk" -type f
+          exit 1
+        fi
+        
         export ALLOW_MISSING_DEPENDENCIES=true
         export USE_CCACHE=1
         source build/envsetup.sh
         
+        # Пробуем lunch
         lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
         
-        make recoveryimage -j2
-        
-        # Отладка: покажем, что получилось
-        echo "=== Build output directories ==="
-        ls -la out/target/product/
-        echo "=== All img files ==="
-        find out/target/product -name "*.img" -type f
+        # Собираем
+        m recoveryimage -j2
+
+    - name: List Output Files
+      run: |
+        cd twrp-src
+        echo "=== Full out/target/product structure ==="
+        find out/target/product -type f -name "*.img" 2>/dev/null
+        echo "=== All files in out/target/product/* ==="
+        ls -la out/target/product/*/ 2>/dev/null || echo "No product dir"
+        echo "=== Build logs (last 50 lines) ==="
+        tail -50 out/target/product/*/recovery* 2>/dev/null || echo "No recovery log"
         
     - name: Upload Artifacts
       if: always()
