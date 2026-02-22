@@ -55,119 +55,80 @@ jobs:
         curl -s https://storage.googleapis.com/git-repo-downloads/repo > $HOME/bin/repo
         chmod a+x $HOME/bin/repo
         
-        # Add to PATH for current step AND future steps
         echo "$HOME/bin" >> $GITHUB_PATH
         export PATH="$HOME/bin:$PATH"
         
-        # Verify installation
-        ls -la $HOME/bin/repo
         $HOME/bin/repo --version
         
-    - name: Configure Git (CRITICAL)
+    - name: Configure Git
       run: |
-        # Remove any stored credentials that might interfere
+        # Remove any credentials
         rm -f ~/.git-credentials
         rm -f ~/.netrc
         
-        # Disable credential helper completely
+        # Disable credential helper
         git config --global --unset credential.helper || true
         git config --global credential.helper ""
         
-        # Force HTTPS instead of git://
+        # Force HTTPS
         git config --global url."https://".insteadOf git://
         
-        # Set dummy user info
+        # Set user
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
         
-        # Verify config
-        git config --list
-        
-    - name: Test GitHub Access
-      run: |
-        # Test that we can access GitHub without auth
-        curl -I https://github.com/twrp/manifest.git 2>&1 | head -5
-        
-        # Test git ls-remote (this is what repo does internally)
-        git ls-remote https://github.com/twrp/manifest.git HEAD 2>&1 || echo "Test failed but continuing..."
-        
-    - name: Initialize TWRP Sources
+    - name: Initialize TWRP Sources (FIXED)
       run: |
         mkdir -p twrp-src
         cd twrp-src
         
-        # Disable all auth prompts and launcher updates
+        # Disable auth
         export REPO_NO_LAUNCHER_UPDATE=1
         export GIT_TERMINAL_PROMPT=0
         export GIT_ASKPASS=/bin/true
-        export GIT_CREDENTIAL_HELPER=""
+        unset GITHUB_TOKEN
+        export GITHUB_TOKEN=""
         
-        # Use absolute path to repo
+        # Initialize
         $HOME/bin/repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1 --no-tags
         
-        # Sync with limited threads
+        # Sync
         $HOME/bin/repo sync -c --no-tags -j2 --force-sync
-        
-    - name: Debug Device Tree Structure
-      run: |
-        cd $GITHUB_WORKSPACE
-        
-        echo "=== Current directory: $(pwd) ==="
-        echo "=== All files in root: ==="
-        ls -la
-        echo "=== Searching for AndroidProducts.mk: ==="
-        find . -name "AndroidProducts.mk" -type f 2>/dev/null
-        echo "=== Searching for device trees: ==="
-        find . -type d -name "samsung" 2>/dev/null
-        echo "=== All .mk files: ==="
-        find . -name "*.mk" -type f 2>/dev/null | head -20
         
     - name: Copy Device Tree
       run: |
         cd $GITHUB_WORKSPACE
         
-        # Determine source path
+        # Debug structure
+        echo "Current dir: $(pwd)"
+        ls -la
+        find . -name "AndroidProducts.mk" -type f 2>/dev/null
+        
         SOURCE_PATH=""
         if [ -f "AndroidProducts.mk" ]; then
           SOURCE_PATH="."
-          echo "Using root as source"
         elif [ -f "device/samsung/m13/AndroidProducts.mk" ]; then
           SOURCE_PATH="device/samsung/m13"
-          echo "Using device/samsung/m13 as source"
         elif [ -f "android_device_samsung_m13/AndroidProducts.mk" ]; then
           SOURCE_PATH="android_device_samsung_m13"
-          echo "Using android_device_samsung_m13 as source"
         else
           # Try to find any AndroidProducts.mk
-          FOUND_FILE=$(find . -name "AndroidProducts.mk" -type f | head -1)
-          if [ -n "$FOUND_FILE" ]; then
-            SOURCE_PATH=$(dirname "$FOUND_FILE")
-            echo "Found at: $SOURCE_PATH"
+          FOUND=$(find . -name "AndroidProducts.mk" -type f | head -1)
+          if [ -n "$FOUND" ]; then
+            SOURCE_PATH=$(dirname "$FOUND")
           else
-            echo "ERROR: AndroidProducts.mk not found anywhere!"
-            echo "Directory structure:"
-            find . -maxdepth 3 -type d | head -30
+            echo "ERROR: AndroidProducts.mk not found"
             exit 1
           fi
         fi
         
-        # Copy to destination
-        DEST_DIR="twrp-src/device/samsung/m13"
-        mkdir -p "$DEST_DIR"
+        mkdir -p twrp-src/device/samsung/m13
+        cp -r "$SOURCE_PATH"/* twrp-src/device/samsung/m13/ 2>/dev/null || true
         
-        echo "Copying from $SOURCE_PATH to $DEST_DIR"
-        cp -r "$SOURCE_PATH"/* "$DEST_DIR/" 2>/dev/null || true
-        
-        # Verify
-        if [ -f "$DEST_DIR/AndroidProducts.mk" ]; then
-          echo "✅ Successfully copied AndroidProducts.mk"
-          echo "Contents of destination:"
-          ls -la "$DEST_DIR"
+        if [ -f "twrp-src/device/samsung/m13/AndroidProducts.mk" ]; then
+          echo "Device tree copied"
         else
-          echo "❌ AndroidProducts.mk not found in destination"
-          echo "Contents of $DEST_DIR:"
-          ls -la "$DEST_DIR" 2>/dev/null || echo "Directory doesn't exist"
-          echo "Source path contents:"
+          echo "Copy failed. Source: $SOURCE_PATH"
           ls -la "$SOURCE_PATH"
           exit 1
         fi
@@ -176,12 +137,10 @@ jobs:
       run: |
         cd twrp-src
         
-        # Check if device tree is properly placed
+        # Verify device tree
         if [ ! -f "device/samsung/m13/AndroidProducts.mk" ]; then
-          echo "ERROR: Device tree not in correct location!"
-          echo "Expected: device/samsung/m13/AndroidProducts.mk"
-          echo "Found at:"
-          find . -name "AndroidProducts.mk" -type f 2>/dev/null
+          echo "ERROR: Device tree not in correct location"
+          find . -name "AndroidProducts.mk" -type f
           exit 1
         fi
         
@@ -189,23 +148,8 @@ jobs:
         export USE_CCACHE=1
         source build/envsetup.sh
         
-        # Try multiple lunch combinations
-        LUNCH_CMD=""
-        for combo in twrp_m13-eng omni_m13-eng aosp_m13-eng twrp_m13-userdebug; do
-          if echo "$combo" | grep -q "$(get_build_var TARGET_PRODUCT 2>/dev/null || echo '')"; then
-            LUNCH_CMD="$combo"
-            break
-          fi
-        done
+        lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
         
-        if [ -z "$LUNCH_CMD" ]; then
-          # Try direct lunch
-          lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
-        else
-          lunch "$LUNCH_CMD"
-        fi
-        
-        echo "Building recovery image..."
         make recoveryimage -j2
         
     - name: Upload Artifacts
