@@ -35,97 +35,55 @@ jobs:
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
-        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
         free -h
         
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
+        sudo apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
           bc bison build-essential ccache curl flex g++-multilib \
           gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev \
           lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
           libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
           pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
           python3 python-is-python3
-        
+          
     - name: Install repo tool
       run: |
-        sudo curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
-        sudo chmod a+x /usr/local/bin/repo
-        /usr/local/bin/repo --version
+        # Устанавливаем repo ЛОКАЛЬНО для текущего пользователя
+        mkdir -p $HOME/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > $HOME/bin/repo
+        chmod a+x $HOME/bin/repo
         
-    - name: Configure Git
+        # Добавляем в PATH
+        echo "$HOME/bin" >> $GITHUB_PATH
+        
+        # Проверяем установку
+        which repo
+        repo --version
+        
+    - name: Configure Git (IMPORTANT)
       run: |
+        # УДАЛЯЕМ ВСЕ credential helpers
+        git config --global --unset credential.helper || true
         git config --global credential.helper ""
+        
+        # Удаляем ~/.netrc и ~/.git-credentials если есть
+        rm -f ~/.netrc
+        rm -f ~/.git-credentials
+        
+        # Устанавливаем настройки для публичного доступа
         git config --global url."https://".insteadOf git://
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
         
-    - name: Initialize TWRP Sources
+    - name: Initialize TWRP Sources (FIXED)
       run: |
         mkdir -p twrp-src
         cd twrp-src
         
-        # Critical: disable auth prompts and launcher update
+        # КРИТИЧЕСКИ ВАЖНО: отключаем все формы аутентификации
         export REPO_NO_LAUNCHER_UPDATE=1
         export GIT_TERMINAL_PROMPT=0
         export GIT_ASKPASS=/bin/true
-        
-        repo init -u https://github.com/twrp/manifest.git -b ${{ inputs.MANIFEST_BRANCH }} --depth=1
-        
-        # Sync with limited threads
-        repo sync -c --no-tags -j2 --force-sync
-        
-    - name: Copy Device Tree
-      run: |
-        cd $GITHUB_WORKSPACE
-        
-        # Check if AndroidProducts.mk exists
-        if [ -f "AndroidProducts.mk" ]; then
-          echo "AndroidProducts.mk found in root"
-        else
-          echo "AndroidProducts.mk NOT found in root"
-          find . -name "AndroidProducts.mk" -type f 2>/dev/null
-          echo "Current files:"
-          ls -la
-          exit 1
-        fi
-        
-        # Copy device tree
-        mkdir -p twrp-src/device/samsung/m13
-        cp -r ./* twrp-src/device/samsung/m13/ 2>/dev/null || true
-        
-        # Verify copy
-        if [ -f "twrp-src/device/samsung/m13/AndroidProducts.mk" ]; then
-          echo "Device tree copied successfully"
-        else
-          echo "AndroidProducts.mk not found after copy"
-          ls -la twrp-src/device/samsung/m13/
-          find twrp-src/device/samsung/m13 -name "AndroidProducts.mk" 2>/dev/null
-          exit 1
-        fi
-        
-    - name: Build TWRP
-      run: |
-        cd twrp-src
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export USE_CCACHE=1
-        source build/envsetup.sh
-        
-        # Try different lunch combos
-        lunch twrp_m13-eng || lunch omni_m13-eng || lunch aosp_m13-eng || lunch twrp_m13-userdebug
-        
-        # Build with limited threads
-        make recoveryimage -j2
-        
-    - name: Upload Artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: twrp-${{ inputs.MANIFEST_BRANCH }}-${{ github.run_number }}
-        path: |
-          twrp-src/out/target/product/*/recovery.img
-          twrp-src/out/target/product/*/boot.img
-          twrp-src/out/target/product/*/twrp*.img
-        retention-days: 14
+        export G
