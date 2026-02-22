@@ -75,4 +75,4 @@ jobs:
         
         /usr/local/bin/repo sync -c --no-tags -j2 --force-sync
         
-    ... остальные шаги
+        
