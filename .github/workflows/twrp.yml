@@ -62,13 +62,20 @@ jobs:
         which repo
         repo --version
         
-    - name: Configure Git
+    - name: Configure Git (aggressive)
       run: |
+        # Удаляем файлы с credentials
+        rm -f ~/.git-credentials
+        rm -f ~/.netrc
+        rm -f ~/.config/git/credentials
+        
+        # Удаляем настройки credential helper
+        git config --global --unset credential.helper || true
         git config --global credential.helper ""
-        rm -f ~/.git-credentials ~/.netrc
-        git config --global url."https://".insteadOf git://
-        git config --global user.email "actions@github.com"
-        git config --global user.name "GitHub Actions"
+        
+        # Удаляем extraheader (и глобальный, и системный)
+        git config --global --unset-all http.https://github.com/.extraheader || true
+        sudo git config --system --unset-all
         
     - name: Initialize TWRP Sources
       run: |
