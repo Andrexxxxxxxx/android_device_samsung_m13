@@ -5,12 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-LOCAL_PATH := $(call my-dir)
-
 PRODUCT_MAKEFILES := \
-    $(LOCAL_PATH)/../device/samsung/m13/twrp_m13.mk
+    $(LOCAL_DIR)/device/samsung/m13/twrp_m13.mk
 
 COMMON_LUNCH_CHOICES := \
-    twrp_m13-ap2a-user \
-    twrp_m13-ap2a-userdebug \
-    twrp_m13-ap2a-eng
+    twrp_m13-eng

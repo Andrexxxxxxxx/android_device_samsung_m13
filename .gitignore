@@ -13,3 +13,4 @@
 
 .gemini/
 gha-creds-*.json
+ghp_*
