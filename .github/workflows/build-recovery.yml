@@ -91,7 +91,8 @@ jobs:
     
     - name: Copy Device Tree
       run: |
-        # Correctly copy the checked-out repo contents into the TWRP build tree
+        # Ensure the target directory exists before copying
+        mkdir -p twrp/device/samsung/m13
         cp -r workspace/device/samsung/m13/. twrp/device/samsung/m13/
     
     - name: Build
