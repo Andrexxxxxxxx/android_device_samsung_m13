@@ -85,9 +85,9 @@ jobs:
         git config --global http.lowSpeedLimit 0
         git config --global http.lowSpeedTime 999999
         
-        # Sync with progress info to see activity in logs
-        repo sync -c --no-tags --no-clone-bundle --force-sync --progress -j$(nproc --all) || \
-        repo sync -c --no-tags --no-clone-bundle --force-sync --progress -j1 --fail-fast
+        # Sync with verbose info to see activity in logs
+        repo sync -c --no-tags --no-clone-bundle --force-sync -v -j$(nproc --all) || \
+        repo sync -c --no-tags --no-clone-bundle --force-sync -v -j1 --fail-fast
     
     - name: Copy Device Tree
       run: |
