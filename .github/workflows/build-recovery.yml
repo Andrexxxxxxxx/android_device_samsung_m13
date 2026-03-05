@@ -85,9 +85,9 @@ jobs:
         git config --global http.lowSpeedLimit 0
         git config --global http.lowSpeedTime 999999
         
-        # Sync with multiple threads first, then fallback to single thread if it fails
-        repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc --all) || \
-        repo sync -c --no-tags --no-clone-bundle --force-sync -j1 --fail-fast
+        # Sync with progress info to see activity in logs
+        repo sync -c --no-tags --no-clone-bundle --force-sync --progress -j$(nproc --all) || \
+        repo sync -c --no-tags --no-clone-bundle --force-sync --progress -j1 --fail-fast
     
     - name: Copy Device Tree
       run: |
