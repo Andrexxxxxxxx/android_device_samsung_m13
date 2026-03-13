@@ -1,0 +1,71 @@
+name: Build TWRP Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'TWRP Branch'
+        required: true
+        default: 'twrp-12.1'
+        type: choice
+        options:
+          - twrp-12.1
+          - twrp-13.0
+          - twrp-14.1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      GITHUB_TOKEN: ""
+      GITHUB_ACTIONS_TOKEN: ""
+
+    steps:
+      - name: Checkout Device Tree
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: gradle
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 33
+          build-tools: 33.0.2
+          ndk: 25.2.933565
+          cache: true
+
+      - name: Checkout TWRP Manifest
+        run: |
+          git clone https://github.com/TeamWin/android_manifest.git -b ${{ github.event.inputs.MANIFEST_BRANCH }} device/teamscope/m13
+
+      - name: Lunch
+        run: |
+          source build/envsetup.sh
+          lunch twrp_m13-eng
+
+      - name: Build TWRP
+        run: |
+          mka recoveryimage -j$(nproc)
+
+- name: Upload TWRP
+  uses: actions/upload-artifact@v4
+  with:
+    name: twrp-${{ github.run_number }}      # имя артефакта в Actions
+    path: out/target/product/<device>/recovery.img  # путь к файлу на runner'е
+    if-no-files-found: error
