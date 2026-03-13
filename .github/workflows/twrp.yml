@@ -1,93 +1,30 @@
-name: TWRP Build
-
-on:
-  workflow_dispatch:
-    inputs:
-      manifest:
-        description: 'Manifest URL'
-        required: true
-        default: 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp'
-      manifest_branch:
-        description: 'Manifest Branch'
-        required: true
-        default: 'twrp-12.1'
-      device:
-        description: 'Device'
-        required: true
-      dt_src:
-        description: 'Device tree source'
-        required: true
-      dt_branch:
-        description: 'Device tree branch'
-        required: true
-        default: 'android-12.1'
-
-env:
-  MANIFEST_URL: ${{ github.event.inputs.manifest }}
-  MANIFEST_BRANCH: ${{ github.event.inputs.manifest_branch }}
-  DEVICE: ${{ github.event.inputs.device }}
-  DT_URL: ${{ github.event.inputs.dt_src }}
-  DT_BRANCH: ${{ github.event.inputs.dt_branch }}
-
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        path: android_root
-
-    - name: Initialization
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git gnupg flex bison gperf build-essential zip curl zlib1g-dev \
-        gcc-multilib g++-multilib libc6-dev-i386 libncurses5 lib32ncurses5-dev x11proto-core-dev \
-        libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3
-
-    - name: Setup Repo
-      run: |
-        mkdir -p ~/.bin
-        PATH="${PATH}:~/.bin"
-        wget -O ~/.bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-        chmod a+x ~/.bin/repo
-
-    - name: Sync
+    - name: Device tree
       working-directory: android_root
       run: |
-        PATH="${PATH}:~/.bin"
-        repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
-        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
-    - name: Device tree
-      run: |
+        export PATH="${PATH}:~/.bin"
         rm -rf .repo/local_manifests
-        git clone "$DT_URL" -b "$DT_BRANCH" device/$MANIFEST_PLAT/vendor/$DEVICE
-        # Создаем локальный манифест
+        git clone "$DT_URL" -b "$DT_BRANCH" device/asus/I003D
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/roomservice.xml << EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <project name="$DT_URL" path="device/$MANIFEST_PLAT/vendor/$DEVICE" remote="github" revision="$DT_BRANCH" />
+          <project name="$DT_URL" path="device/asus/I003D" remote="github" revision="$DT_BRANCH" />
         </manifest>
         EOF
-        cd android_root && repo sync -c --force-sync -j$(nproc --all)
-
-    - name: Vendor tree (опционально)
-      run: |
-        # Раскомментируй если нужен vendor tree
-        # git clone https://github.com/TheMuppets/proprietary_vendor_asus -b linego-q-oss device/asus/I003D
+        repo sync -c --force-sync -j$(nproc --all)
 
     - name: Build TWRP
       working-directory: android_root
       run: |
+        export PATH="${PATH}:~/.bin"
         export ALLOW_MISSING_DEPENDENCIES=true
         export FOX_USE_TWRP_RECOVERY_IMAGE_BUILDER=1
-        make -j$(nproc --all) recoveryimage
+        source build/envsetup.sh
+        lunch twrp_I003D-eng
+        mka recoveryimage
 
     - name: Upload TWRP
       uses: actions/upload-artifact@v4
       with:
-        name: TWRP-${{ github.event.inputs.device }}-${{ github.run_number }}
-        path: android_root/out/target/product/${{ github.event.inputs.device }}/recovery.img
-        if-no-files-found: error
+        name: TWRP-I003D-${{ github.run_number }}
+        path: android_root/out/target/product/I003D/recovery.img
