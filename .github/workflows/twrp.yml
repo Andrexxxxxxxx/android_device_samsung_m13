@@ -63,9 +63,9 @@ jobs:
         run: |
           mka recoveryimage -j$(nproc)
 
-      - name: Upload TWRP Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: twrp-${{ github.event.inputs.MANIFEST_BRANCH }}
-          path: out/target/product/m13/*.img
-          retention-days: 7
+- name: Upload TWRP
+  uses: actions/upload-artifact@v4
+  with:
+    name: twrp-${{ github.run_number }}      # имя артефакта в Actions
+    path: out/target/product/<device>/recovery.img  # путь к файлу на runner'е
+    if-no-files-found: error
