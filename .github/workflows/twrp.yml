@@ -44,17 +44,16 @@ jobs:
                    -b "${{ github.event.inputs.manifest_branch }}" --depth=1
         repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
         
-    - name: Device tree
+      - name: Device tree
       working-directory: android_root
       run: |
         export PATH="${PATH}:~/.bin"
         DEVICE="${{ github.event.inputs.device }}"
         DT_SRC="${{ github.event.inputs.dt_src }}"
-        DT_BRANCH="${{ github.event.inputs.dt_branch || 'android-12.1' }}"  # дефолт если пусто
+        DT_BRANCH="main"  # ← ИЗМЕНИ на реальную ветку!
         
         echo "Device: $DEVICE, DT_SRC: $DT_SRC, DT_BRANCH: $DT_BRANCH"
         
-        # УДАЛИТЬ существующую папку!
         rm -rf "device/samsung/$DEVICE"
         rm -rf .repo/local_manifests
         
