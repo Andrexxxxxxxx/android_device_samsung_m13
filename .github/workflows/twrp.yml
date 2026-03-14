@@ -50,11 +50,16 @@ jobs:
         export PATH="${PATH}:~/.bin"
         DEVICE="${{ github.event.inputs.device }}"
         DT_SRC="${{ github.event.inputs.dt_src }}"
-        DT_BRANCH="${{ github.event.inputs.dt_branch }}"
+        DT_BRANCH="${{ github.event.inputs.dt_branch || 'android-12.1' }}"  # дефолт если пусто
+        
         echo "Device: $DEVICE, DT_SRC: $DT_SRC, DT_BRANCH: $DT_BRANCH"
         
+        # УДАЛИТЬ существующую папку!
+        rm -rf "device/samsung/$DEVICE"
         rm -rf .repo/local_manifests
+        
         git clone "$DT_SRC" -b "$DT_BRANCH" "device/samsung/$DEVICE"
+        
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/roomservice.xml << EOF
         <?xml version="1.0" encoding="UTF-8"?>
@@ -62,6 +67,7 @@ jobs:
           <project name="$DT_SRC" path="device/samsung/$DEVICE" remote="github" revision="$DT_BRANCH" />
         </manifest>
         EOF
+        
         repo sync -c --force-sync -j$(nproc --all)
 
     - name: Build TWRP
