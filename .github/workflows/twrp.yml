@@ -48,13 +48,18 @@ jobs:
       working-directory: android_root
       run: |
         export PATH="${PATH}:~/.bin"
+        DEVICE="${{ github.event.inputs.device }}"
+        DT_SRC="${{ github.event.inputs.dt_src }}"
+        DT_BRANCH="${{ github.event.inputs.dt_branch }}"
+        echo "Device: $DEVICE, DT_SRC: $DT_SRC, DT_BRANCH: $DT_BRANCH"
+        
         rm -rf .repo/local_manifests
-        git clone "$DT_SRC" -b "$DT_BRANCH" device/asus/$DEVICE
+        git clone "$DT_SRC" -b "$DT_BRANCH" "device/samsung/$DEVICE"
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/roomservice.xml << EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <project name="$DT_SRC" path="device/asus/$DEVICE" remote="github" revision="$DT_BRANCH" />
+          <project name="$DT_SRC" path="device/samsung/$DEVICE" remote="github" revision="$DT_BRANCH" />
         </manifest>
         EOF
         repo sync -c --force-sync -j$(nproc --all)
