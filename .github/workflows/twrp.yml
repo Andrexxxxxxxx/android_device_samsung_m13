@@ -11,14 +11,11 @@ on:
         description: 'Manifest Branch'
         required: true
         default: 'twrp-12.1'
-      device:
-        description: 'Device'
-        required: true
-        default: 'I003D'
+      device: m13
       dt_src:
         description: 'Device tree source'
         required: true
-        default: 'https://github.com/TeamWin/android_device_asus_I003D'
+        default: 'https://github.com/twrpdtgen/android_device_samsung_m13.git'
       dt_branch:
         description: 'Device tree branch'
         required: true
