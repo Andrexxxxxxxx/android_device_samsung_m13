@@ -1,0 +1,75 @@
+name: TWRP Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Device'
+        required: true
+        default: m13
+      dt_src:
+        description: 'Device tree source' 
+        required: true
+        default: https://github.com/andrey-m13/android_device_samsung_m13
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: android_root
+
+    - name: Setup environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git gnupg flex bison gperf build-essential zip curl \
+        zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 libncurses5-dev \
+        x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
+        xsltproc unzip fontconfig python3 bc ccache
+
+    - name: Setup repo
+      run: |
+        mkdir -p ~/.bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+        chmod a+x ~/.bin/repo
+
+    - name: Repo init & sync
+      working-directory: android_root
+      run: |
+        export PATH="$HOME/.bin:$PATH"
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+
+    - name: Setup build environment
+      working-directory: android_root
+      run: |
+        echo "DEVICE=${{ github.event.inputs.device }}" >> $GITHUB_ENV
+        
+        # Настройка локального манифеста для скачивания дерева устройства
+        mkdir -p .repo/local_manifests
+        cat > .repo/local_manifests/roomservice.xml << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <project name="${{ github.event.inputs.dt_src }}" path="device/samsung/${{ github.event.inputs.device }}" remote="github" revision="main" />
+        </manifest>
+        EOF
+        
+        export PATH="$HOME/.bin:$PATH"
+        repo sync -c --force-sync -j$(nproc --all)
+
+    - name: Build TWRP
+      working-directory: android_root
+      run: |
+        export PATH="$HOME/.bin:$PATH"
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        lunch twrp_${{ env.DEVICE }}-eng
+        mka recoveryimage -j$(nproc --all)
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: TWRP-${{ env.DEVICE }}-${{ github.run_id }}
+        path: android_root/out/target/product/${{ env.DEVICE }}/recovery.img

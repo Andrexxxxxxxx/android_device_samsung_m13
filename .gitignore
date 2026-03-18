@@ -1,0 +1,16 @@
+ # Ignore build output
+ build/
+ dist/
+
+ # Ignore log files
+ *.log
+    
+ # Ignore dependency directories 
+ node_modules/
+   
+# Ignore environment variables
+.env
+
+.gemini/
+gha-creds-*.json
+ghp_*

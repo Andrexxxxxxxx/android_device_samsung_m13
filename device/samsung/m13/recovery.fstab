@@ -1,0 +1,43 @@
+# Samsung Galaxy M13 (SM-M135F) - Android 14 / One UI 6.1
+# Logical partitions (super)
+/system             ext4      system                                flags=display=system;logical;backup=1
+/vendor             ext4      vendor                                flags=display=vendor;logical;backup=1
+/product            ext4      product                               flags=display=product;logical;backup=1
+/odm                ext4      odm                                   flags=display=odm;logical;backup=1
+/system_ext         ext4      system_ext                            flags=display=system_ext;logical;backup=1
+/vendor_dlkm        ext4      vendor_dlkm                           flags=display=vendor_dlkm;logical
+/system_dlkm        ext4      system_dlkm                           flags=display=system_dlkm;logical
+
+# Physical partitions
+/boot               emmc      /dev/block/by-name/boot               flags=display=boot;backup=1;flashimg=1
+/recovery           emmc      /dev/block/by-name/recovery           flags=display=recovery;backup=1;flashimg=1
+/dtbo               emmc      /dev/block/by-name/dtbo               flags=display=dtbo;backup=1;flashimg=1
+/init_boot          emmc      /dev/block/by-name/init_boot          flags=display=init_boot;backup=1;flashimg=1
+/vendor_boot        emmc      /dev/block/by-name/vendor_boot        flags=display=vendor_boot;backup=1;flashimg=1
+
+# Data and cache
+/data               f2fs      /dev/block/by-name/userdata           flags=display=data;fileencryption=aes-256-xts:aes-256-cts
+/cache              ext4      /dev/block/by-name/cache              flags=display=cache;backup=1
+/metadata           ext4      /dev/block/by-name/metadata           flags=display=metadata
+
+# EFS and other Samsung partitions
+/efs                ext4      /dev/block/by-name/sec_efs            flags=display=efs;backup=1
+/sec_efs            ext4      /dev/block/by-name/sec_efs            flags=display=sec_efs;backup=1
+/carrier            ext4      /dev/block/by-name/carrier            flags=display=carrier
+/preload            ext4      /dev/block/by-name/hidden             flags=display=preload
+/prism              ext4      /dev/block/by-name/prism              flags=display=prism
+/optics             ext4      /dev/block/by-name/optics             flags=display=optics
+/keydata            ext4      /dev/block/by-name/keydata            flags=display=keydata
+/keyrefuge          f2fs      /dev/block/by-name/keyrefuge          flags=display=keyrefuge
+
+# Radio/Modem
+/modem              emmc      /dev/block/by-name/radio              flags=display=modem;backup=1
+
+# Misc
+/misc               emmc      /dev/block/by-name/misc               flags=display=misc
+/vbmeta_system      emmc      /dev/block/by-name/vbmeta_system      flags=display=vbmeta_system;backup=1;flashimg=1
+/vbmeta_samsung     emmc      /dev/block/by-name/vbmeta_samsung     flags=display=vbmeta_samsung;backup=1;flashimg=1
+
+# External storage
+/external_sd        auto      /dev/block/mmcblk1p1                  flags=display=external_sd;storage;wipeingui;removable
+/usb_otg            auto      /dev/block/sda1                       flags=display=usb_otg;storage;wipeingui;removable
