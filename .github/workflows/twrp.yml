@@ -6,11 +6,11 @@ on:
       device:
         description: 'Device'
         required: true
-        default: m13
+        default: a13
       dt_src:
         description: 'Device tree source' 
         required: true
-        default: https://github.com/andrey-m13/android_device_samsung_m13
+        default: https://github.com/VThang51/android_device_samsung_a13
 
 jobs:
   build:
@@ -58,6 +58,26 @@ jobs:
         
         export PATH="$HOME/.bin:$PATH"
         repo sync -c --force-sync -j$(nproc --all)
+
+    - name: Local manifest
+      working-directory: android_root
+      run: |
+        export PATH="${PATH}:~/.bin"
+        mkdir -p .repo/local_manifests
+        cat > .repo/local_manifests/roomservice.xml << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <project name="VThang51/android_device_samsung_a13" 
+                   path="device/samsung/a13" 
+                   remote="github" 
+                   revision="twrp-12.1" />
+          <project name="VThang51/android_kernel_samsung_a13-common" 
+                   path="kernel/samsung/a13-common" 
+                   remote="github" 
+                   revision="twrp-12.1" />
+        </manifest>
+        EOF
+        repo sync -c --force-sync -j$(nproc --all) --force-remove-dirty
 
     - name: Build TWRP
       working-directory: android_root
