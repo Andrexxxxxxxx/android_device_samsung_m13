@@ -4,13 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       device:
-        description: 'Device'
+        description: 'Device Codename (e.g., m13, a13)'
         required: true
-        default: a13
+        default: 'm13'
       dt_src:
-        description: 'Device tree source' 
+        description: 'Device Tree Repo (Owner/Repo)'
         required: true
-        default: https://github.com/VThang51/android_device_samsung_a13
+        default: 'VThang51/android_device_samsung_m13' # Замени на свой репо, если он есть
+      dt_branch:
+        description: 'Device Tree Branch'
+        required: true
+        default: 'main' # Или 'twrp-12.1', если такая ветка существует в репо
+      kernel_src:
+        description: 'Kernel Tree Repo (Optional, leave empty if in device tree)'
+        required: false
+        default: ''
+      kernel_branch:
+        description: 'Kernel Tree Branch'
+        required: false
+        default: 'main'
 
 jobs:
   build:
@@ -27,69 +39,82 @@ jobs:
         sudo apt-get install -y git gnupg flex bison gperf build-essential zip curl \
         zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 libncurses5-dev \
         x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
-        xsltproc unzip fontconfig python3 bc ccache
+        xsltproc unzip fontconfig python3 bc ccache wget
 
-    - name: Setup repo
+    - name: Setup repo tool
       run: |
         mkdir -p ~/.bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
         chmod a+x ~/.bin/repo
+        echo "$HOME/.bin" >> $GITHUB_PATH
 
-    - name: Repo init & sync
+    - name: Repo Init
       working-directory: android_root
       run: |
-        export PATH="$HOME/.bin:$PATH"
         repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
-        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
-    - name: Setup build environment
+    - name: Create Local Manifest
       working-directory: android_root
       run: |
-        echo "DEVICE=${{ github.event.inputs.device }}" >> $GITHUB_ENV
-        
-        # Настройка локального манифеста для скачивания дерева устройства
         mkdir -p .repo/local_manifests
+        
+        # Формируем динамический манифест на основе входных данных
         cat > .repo/local_manifests/roomservice.xml << EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <project name="${{ github.event.inputs.dt_src }}" path="device/samsung/${{ github.event.inputs.device }}" remote="github" revision="main" />
-        </manifest>
-        EOF
-        
-        export PATH="$HOME/.bin:$PATH"
-        repo sync -c --force-sync -j$(nproc --all)
+          <project name="${{ github.event.inputs.dt_src }}" 
+                   path="device/samsung/${{ github.event.inputs.device }}" 
+                   remote="github" 
+                   revision="${{ github.event.inputs.dt_branch }}" />
+EOF
 
-    - name: Local manifest
+        # Если указано ядро отдельно, добавляем его (предполагая стандартную структуру)
+        if [ -n "${{ github.event.inputs.kernel_src }}" ]; then
+          cat >> .repo/local_manifests/roomservice.xml << EOF
+          <project name="${{ github.event.inputs.kernel_src }}" 
+                   path="kernel/samsung/${{ github.event.inputs.device }}-common" 
+                   remote="github" 
+                   revision="${{ github.event.inputs.kernel_branch }}" />
+EOF
+        fi
+        
+        echo "</manifest>" >> .repo/local_manifests/roomservice.xml
+        
+        echo "Generated roomservice.xml:"
+        cat .repo/local_manifests/roomservice.xml
+
+    - name: Repo Sync
       working-directory: android_root
       run: |
-        export PATH="${PATH}:~/.bin"
-        mkdir -p .repo/local_manifests
-        cat > .repo/local_manifests/roomservice.xml << EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <manifest>
-          <project name="VThang51/android_device_samsung_a13" 
-                   path="device/samsung/a13" 
-                   remote="github" 
-                   revision="twrp-12.1" />
-          <project name="VThang51/android_kernel_samsung_a13-common" 
-                   path="kernel/samsung/a13-common" 
-                   remote="github" 
-                   revision="twrp-12.1" />
-        </manifest>
-        EOF
-        repo sync -c --force-sync -j$(nproc --all) --force-remove-dirty
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags || repo sync -c -j$(nproc --all) --force-sync
+
+    - name: Check Device Tree
+      working-directory: android_root
+      run: |
+        echo "Checking files in device/samsung/${{ github.event.inputs.device }}..."
+        ls -la device/samsung/${{ github.event.inputs.device }}/
+        if [ ! -f device/samsung/${{ github.event.inputs.device }}/device.mk ]; then
+          echo "::error::device.mk not found! Check your device tree repository."
+          exit 1
+        fi
 
     - name: Build TWRP
       working-directory: android_root
       run: |
-        export PATH="$HOME/.bin:$PATH"
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
-        lunch twrp_${{ env.DEVICE }}-eng
+        
+        # Формируем имя lunch target (обычно twrp_устройство-eng)
+        lunch_target="twrp_${{ github.event.inputs.device }}-eng"
+        echo "Lunching: $lunch_target"
+        
+        lunch $lunch_target
+        
+        # Запуск сборки
         mka recoveryimage -j$(nproc --all)
 
-    - name: Upload
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: TWRP-${{ env.DEVICE }}-${{ github.run_id }}
-        path: android_root/out/target/product/${{ env.DEVICE }}/recovery.img
+        name: TWRP-${{ github.event.inputs.device }}-${{ github.run_id }}
+        path: android_root/out/target/product/${{ github.event.inputs.device }}/recovery.img
