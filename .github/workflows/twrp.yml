@@ -10,13 +10,13 @@ on:
       dt_src:
         description: 'Device Tree Repo (Owner/Repo)'
         required: true
-        default: 'VThang51/android_device_samsung_m13' # Замени на свой репо, если он есть
+        default: 'VThang51/android_device_samsung_a13'
       dt_branch:
         description: 'Device Tree Branch'
         required: true
-        default: 'main' # Или 'twrp-12.1', если такая ветка существует в репо
+        default: 'main'
       kernel_src:
-        description: 'Kernel Tree Repo (Optional, leave empty if in device tree)'
+        description: 'Kernel Tree Repo (Optional)'
         required: false
         default: ''
       kernel_branch:
@@ -58,30 +58,31 @@ jobs:
       run: |
         mkdir -p .repo/local_manifests
         
-        # Формируем динамический манифест на основе входных данных
-        cat > .repo/local_manifests/roomservice.xml << EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <manifest>
-          <project name="${{ github.event.inputs.dt_src }}" 
-                   path="device/samsung/${{ github.event.inputs.device }}" 
-                   remote="github" 
-                   revision="${{ github.event.inputs.dt_branch }}" />
-EOF
+        # Получаем значения переменных
+        DT_SRC="${{ github.event.inputs.dt_src }}"
+        DT_PATH="device/samsung/${{ github.event.inputs.device }}"
+        DT_BRANCH="${{ github.event.inputs.dt_branch }}"
+        KERNEL_SRC="${{ github.event.inputs.kernel_src }}"
+        KERNEL_PATH="kernel/samsung/${{ github.event.inputs.device }}-common"
+        KERNEL_BRANCH="${{ github.event.inputs.kernel_branch }}"
 
-        # Если указано ядро отдельно, добавляем его (предполагая стандартную структуру)
-        if [ -n "${{ github.event.inputs.kernel_src }}" ]; then
-          cat >> .repo/local_manifests/roomservice.xml << EOF
-          <project name="${{ github.event.inputs.kernel_src }}" 
-                   path="kernel/samsung/${{ github.event.inputs.device }}-common" 
-                   remote="github" 
-                   revision="${{ github.event.inputs.kernel_branch }}" />
-EOF
+        # Начинаем запись XML
+        echo '<?xml version="1.0" encoding="UTF-8"?>' > .repo/local_manifests/roomservice.xml
+        echo '<manifest>' >> .repo/local_manifests/roomservice.xml
+        
+        # Добавляем устройство
+        echo "  <project name=\"${DT_SRC}\" path=\"${DT_PATH}\" remote=\"github\" revision=\"${DT_BRANCH}\" />" >> .repo/local_manifests/roomservice.xml
+
+        # Добавляем ядро, если указано
+        if [ -n "${KERNEL_SRC}" ]; then
+          echo "  <project name=\"${KERNEL_SRC}\" path=\"${KERNEL_PATH}\" remote=\"github\" revision=\"${KERNEL_BRANCH}\" />" >> .repo/local_manifests/roomservice.xml
         fi
+
+        echo '</manifest>' >> .repo/local_manifests/roomservice.xml
         
-        echo "</manifest>" >> .repo/local_manifests/roomservice.xml
-        
-        echo "Generated roomservice.xml:"
+        echo "--- Generated roomservice.xml ---"
         cat .repo/local_manifests/roomservice.xml
+        echo "---------------------------------"
 
     - name: Repo Sync
       working-directory: android_root
@@ -91,10 +92,16 @@ EOF
     - name: Check Device Tree
       working-directory: android_root
       run: |
-        echo "Checking files in device/samsung/${{ github.event.inputs.device }}..."
-        ls -la device/samsung/${{ github.event.inputs.device }}/
-        if [ ! -f device/samsung/${{ github.event.inputs.device }}/device.mk ]; then
-          echo "::error::device.mk not found! Check your device tree repository."
+        DEVICE="${{ github.event.inputs.device }}"
+        echo "Checking files in device/samsung/${DEVICE}..."
+        ls -la "device/samsung/${DEVICE}/" || exit 1
+        
+        if [ ! -f "device/samsung/${DEVICE}/device.mk" ]; then
+          echo "::error::device.mk not found! Check your device tree repository structure."
+          exit 1
+        fi
+        if [ ! -f "device/samsung/${DEVICE}/AndroidProducts.mk" ]; then
+          echo "::error::AndroidProducts.mk not found!"
           exit 1
         fi
 
@@ -104,13 +111,13 @@ EOF
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
         
-        # Формируем имя lunch target (обычно twrp_устройство-eng)
-        lunch_target="twrp_${{ github.event.inputs.device }}-eng"
-        echo "Lunching: $lunch_target"
+        DEVICE="${{ github.event.inputs.device }}"
+        lunch_target="twrp_${DEVICE}-eng"
         
-        lunch $lunch_target
+        echo "Lunching target: ${lunch_target}"
+        lunch ${lunch_target}
         
-        # Запуск сборки
+        echo "Starting build..."
         mka recoveryimage -j$(nproc --all)
 
     - name: Upload Artifact
