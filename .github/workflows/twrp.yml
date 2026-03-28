@@ -5,7 +5,7 @@ on:
     inputs:
 Device Codename: a13
 Device Tree Repo: VThang51/android_device_samsung_a13
-Device Tree Branch: master  # ← Убедись, что такая ветка есть!
+Device Tree Branch: twrp-12.1  # ← Убедись, что такая ветка есть!
 
 jobs:
   build:
