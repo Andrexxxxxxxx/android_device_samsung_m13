@@ -3,26 +3,9 @@ name: TWRP Build
 on:
   workflow_dispatch:
     inputs:
-      device:
-        description: 'Device Codename (e.g., m13, a13)'
-        required: true
-        default: 'm13'
-      dt_src:
-        description: 'Device Tree Repo (Owner/Repo)'
-        required: true
-        default: 'VThang51/android_device_samsung_a13'
-      dt_branch:
-        description: 'Device Tree Branch'
-        required: true
-        default: 'main'
-      kernel_src:
-        description: 'Kernel Tree Repo (Optional)'
-        required: false
-        default: ''
-      kernel_branch:
-        description: 'Kernel Tree Branch'
-        required: false
-        default: 'main'
+Device Codename: a13
+Device Tree Repo: VThang51/android_device_samsung_a13
+Device Tree Branch: master  # ← Убедись, что такая ветка есть!
 
 jobs:
   build:
